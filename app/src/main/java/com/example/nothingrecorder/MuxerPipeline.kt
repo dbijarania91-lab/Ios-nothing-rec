@@ -26,32 +26,49 @@ class MuxerPipeline(
             drainEncoder(videoEncoder.codec, bufferInfo, true)
             drainEncoder(audioEncoder.codec, bufferInfo, false)
         }
+        
         stopMuxer()
     }
 
     private fun drainEncoder(codec: MediaCodec, bufferInfo: MediaCodec.BufferInfo, isVideo: Boolean) {
         val index = codec.dequeueOutputBuffer(bufferInfo, 10000)
+        
         if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
             val newFormat = codec.outputFormat
             if (isVideo) videoTrackIndex = muxer!!.addTrack(newFormat) else audioTrackIndex = muxer!!.addTrack(newFormat)
+            
             if (videoTrackIndex >= 0 && audioTrackIndex >= 0 && !isMuxerStarted) {
                 muxer!!.start()
                 isMuxerStarted = true
             }
         } else if (index >= 0) {
             val encodedData = codec.getOutputBuffer(index)!!
-            if (isMuxerStarted && bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
+            
+            if (isMuxerStarted && (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0)) {
                 muxer!!.writeSampleData(if (isVideo) videoTrackIndex else audioTrackIndex, encodedData, bufferInfo)
             }
+            
             codec.releaseOutputBuffer(index, false)
         }
     }
 
+    // --- THE FIX IS HERE ---
     private fun stopMuxer() {
-        if (isMuxerStarted) {
-            muxer?.stop()
+        try {
+            if (isMuxerStarted) {
+                // Try to write the final header so the video isn't corrupt
+                muxer?.stop()
+            }
+        } catch (e: Exception) {
+            // If it crashes, catch the error so it doesn't break the app
+            e.printStackTrace()
+        } finally {
+            // This ALWAYS runs. It guarantees the file is closed and unlocked.
             muxer?.release()
+            muxer = null
             isMuxerStarted = false
+            videoTrackIndex = -1
+            audioTrackIndex = -1
         }
     }
 }

@@ -71,7 +71,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopRecordingService() {
-        stopService(Intent(this, ScreenRecordService::class.java))
+        val serviceIntent = Intent(this, ScreenRecordService::class.java)
+        stopService(serviceIntent)
         isRecording = false
     }
 }

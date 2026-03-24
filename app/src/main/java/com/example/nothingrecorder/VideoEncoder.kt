@@ -11,7 +11,8 @@ class VideoEncoder {
     lateinit var inputSurface: Surface
 
     fun prepare() {
-        val format = MediaFormat.createVideoFormat(MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 2400, 1080).apply {
+        // Landscape Resolution applied perfectly here!
+        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 2400, 1080).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, 20000000) 
             
@@ -19,9 +20,7 @@ class VideoEncoder {
             setInteger(MediaFormat.KEY_FRAME_RATE, 60)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
 
-            // --- THE 120HZ BYPASS ---
-            // 2. Tell the encoder to accept 120 FPS from the VirtualDisplay.
-            // This stops Android from forcing your physical screen down to 60Hz!
+            // 2. 120Hz Bypass
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, 120f) 
             }
@@ -29,7 +28,7 @@ class VideoEncoder {
             setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
             setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel42)
 
-            // 3. Keep the CFR duplicate lock so the file never drops below 60
+            // 3. Keep the CFR duplicate lock
             setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1000000L / 60)
 
             // Hardcore NDK Flags
@@ -48,8 +47,6 @@ class VideoEncoder {
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         
         inputSurface = codec.createInputSurface() 
-        // NOTICE: I completely deleted the inputSurface.setFrameRate() lock!
-        // Your screen is now free to breathe at 120Hz.
         
         codec.start()
     }

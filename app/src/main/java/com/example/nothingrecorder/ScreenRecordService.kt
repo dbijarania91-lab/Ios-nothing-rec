@@ -31,20 +31,30 @@ class ScreenRecordService : Service() {
         val resultCode = intent?.getIntExtra("RESULT_CODE", 0) ?: return START_NOT_STICKY
         val data = intent.getParcelableExtra<Intent>("DATA") ?: return START_NOT_STICKY
 
-        val notification = NotificationCompat.Builder(this, "REC_CHANNEL")
-            .setContentTitle("Recording Screen")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .build().also {
-                val channel = NotificationChannel("REC_CHANNEL", "Recording", NotificationManager.IMPORTANCE_LOW)
-                getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-            }
+        // 1. Create Channel FIRST
+        val channelId = "nothing_rec_channel"
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Screen Recording", NotificationManager.IMPORTANCE_LOW)
+            manager.createNotificationChannel(channel)
+        }
 
+        // 2. Build Notification
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Nothing Recorder")
+            .setContentText("Recording in progress...")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setOngoing(true)
+            .build()
+
+        // 3. Start Foreground with Type
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
             startForeground(1, notification)
         }
 
+        // 4. Start Projection
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mpm.getMediaProjection(resultCode, data)
 

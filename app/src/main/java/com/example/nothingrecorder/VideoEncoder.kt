@@ -13,20 +13,22 @@ class VideoEncoder {
     fun prepare() {
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1080, 2400).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, 20000000) // 20 Mbps for crystal clear gameplay
+            setInteger(MediaFormat.KEY_BIT_RATE, 20000000) 
             setInteger(MediaFormat.KEY_FRAME_RATE, 60)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
 
-            // --- THE NDK HARDCORE FLAGS ---
-            // Forces Android to treat this encoder with Real-Time iOS-level priority
+            // --- THE LOCKED 60 FPS FIX (CFR) ---
+            // 1,000,000 microseconds / 60 frames = 16666. 
+            // This forces Android to write a frame every 16.6ms no matter what, exactly like iOS.
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1000000L / 60)
+
+            // Hardcore NDK Flags
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 setInteger(MediaFormat.KEY_PRIORITY, 0) 
             }
-            // Stops the encoder from buffering frames, destroying touchscreen lag
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 setInteger(MediaFormat.KEY_LOW_LATENCY, 1) 
             }
-            // Forces the GPU/CPU to process this at max clock speed
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 setFloat(MediaFormat.KEY_OPERATING_RATE, 120f) 
             }
@@ -34,8 +36,6 @@ class VideoEncoder {
 
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        
-        // This generates the EXACT same zero-copy hardware surface as our C++ code!
         inputSurface = codec.createInputSurface() 
         codec.start()
     }

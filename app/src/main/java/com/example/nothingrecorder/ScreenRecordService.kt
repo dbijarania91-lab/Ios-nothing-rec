@@ -13,10 +13,6 @@ import android.os.Build
 import android.os.Environment
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import java.io.File
 
 class ScreenRecordService : Service() {
@@ -26,7 +22,6 @@ class ScreenRecordService : Service() {
     private lateinit var audioEncoder: AudioEncoder
     private lateinit var muxerPipeline: MuxerPipeline
     private var outputFile: File? = null 
-    private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -72,6 +67,8 @@ class ScreenRecordService : Service() {
 
         videoEncoder = VideoEncoder().apply { prepare() }
         audioEncoder = AudioEncoder(mediaProjection!!).apply { prepare() }
+        
+        // Passing "this" context for the Gallery scanner
         muxerPipeline = MuxerPipeline(this, videoEncoder, audioEncoder, outputFile!!.absolutePath)
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
@@ -80,7 +77,8 @@ class ScreenRecordService : Service() {
             videoEncoder.inputSurface, null, null
         )
 
-        serviceScope.launch { muxerPipeline.startLoop() }
+        // Starting the pipeline. The custom Thread inside handles the heavy lifting.
+        muxerPipeline.startLoop() 
     }
 
     override fun onDestroy() {

@@ -13,9 +13,10 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-            externalNativeBuild {
+                    externalNativeBuild {
             cmake {
-                path = file("src/main/cpp/CMakeLists.txt")
+                // Notice: NO equals sign, and NO file() wrapper here!
+                path("src/main/cpp/CMakeLists.txt")
                 version = "3.10.2"
             }
         }

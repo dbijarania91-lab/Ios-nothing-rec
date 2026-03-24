@@ -20,7 +20,6 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            // Android 14 Fix: Start service IMMEDIATELY after consent
             startRecordingService(result.resultCode, result.data!!)
             isRecording = true
         } else {
@@ -37,6 +36,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // --- THE CRASH LOGGER ---
+        Thread.setDefaultUncaughtExceptionHandler(CrashHandler(this))
+        
         setContent {
             RecorderScreen(
                 isRecording = isRecording,
@@ -56,7 +59,6 @@ class MainActivity : ComponentActivity() {
 
     private fun requestScreenCapture() {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        // This triggers the "Start Recording?" system pop-up
         screenCaptureLauncher.launch(mpm.createScreenCaptureIntent())
     }
 

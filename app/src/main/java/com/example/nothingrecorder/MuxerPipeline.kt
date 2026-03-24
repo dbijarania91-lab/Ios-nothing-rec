@@ -1,11 +1,16 @@
 package com.example.nothingrecorder
 
+import android.content.Context
+import android.media.AudioRecord
 import android.media.MediaCodec
 import android.media.MediaMuxer
+import android.media.MediaScannerConnection
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class MuxerPipeline(
+    private val context: Context, // Added Context for the Gallery fix
     private val videoEncoder: VideoEncoder,
     private val audioEncoder: AudioEncoder,
     private val outputPath: String
@@ -23,11 +28,27 @@ class MuxerPipeline(
         audioEncoder.isRecording = true
 
         while (audioEncoder.isRecording) {
+            // THE AUDIO FIX: You MUST manually feed the audio bytes into the codec!
+            feedAudio(audioEncoder.codec, audioEncoder.audioRecord)
+            
             drainEncoder(videoEncoder.codec, bufferInfo, true)
             drainEncoder(audioEncoder.codec, bufferInfo, false)
         }
         
         stopMuxer()
+    }
+
+    // NEW FUNCTION: Scoops internal audio and feeds it to the file
+    private fun feedAudio(codec: MediaCodec, audioRecord: AudioRecord) {
+        val inputBufferIndex = codec.dequeueInputBuffer(0)
+        if (inputBufferIndex >= 0) {
+            val inputBuffer = codec.getInputBuffer(inputBufferIndex) ?: return
+            val readResult = audioRecord.read(inputBuffer, inputBuffer.capacity())
+            if (readResult > 0) {
+                val ptsUsec = System.nanoTime() / 1000
+                codec.queueInputBuffer(inputBufferIndex, 0, readResult, ptsUsec, 0)
+            }
+        }
     }
 
     private fun drainEncoder(codec: MediaCodec, bufferInfo: MediaCodec.BufferInfo, isVideo: Boolean) {
@@ -52,23 +73,24 @@ class MuxerPipeline(
         }
     }
 
-    // --- THE FIX IS HERE ---
     private fun stopMuxer() {
         try {
             if (isMuxerStarted) {
-                // Try to write the final header so the video isn't corrupt
                 muxer?.stop()
             }
         } catch (e: Exception) {
-            // If it crashes, catch the error so it doesn't break the app
             e.printStackTrace()
         } finally {
-            // This ALWAYS runs. It guarantees the file is closed and unlocked.
             muxer?.release()
             muxer = null
             isMuxerStarted = false
             videoTrackIndex = -1
             audioTrackIndex = -1
+            
+            // THE GALLERY FIX: Triggers only when the file is 100% finished
+            MediaScannerConnection.scanFile(context, arrayOf(outputPath), arrayOf("video/mp4")) { path, uri ->
+                Log.d("NothingRecorder", "Perfect Sync! Ready for Gallery: $path")
+            }
         }
     }
 }

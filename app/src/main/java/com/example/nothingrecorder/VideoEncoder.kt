@@ -3,37 +3,49 @@ package com.example.nothingrecorder
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import android.os.Build
 import android.view.Surface
 
-class VideoEncoder(private val width: Int = 1080, private val height: Int = 2400) {
+class VideoEncoder {
     lateinit var codec: MediaCodec
-    var inputSurface: Surface? = null
+    lateinit var inputSurface: Surface
 
     fun prepare() {
-        // Using HEVC (H.265) for maximum quality and minimum file size
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, width, height).apply {
+        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1080, 2400).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, 20000000) // 20 Mbps for crystal clear BGMI clips
-            setInteger(MediaFormat.KEY_FRAME_RATE, 60)     // Target 60 FPS
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1) // 1 second keyframe for better editing
-            
-            // THE 60 FPS LOCK: This forces the encoder to repeat frames if the game lags
-            // This prevents audio/video sync issues in CapCut or Premiere
-            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1000000L / 60L)
+            setInteger(MediaFormat.KEY_BIT_RATE, 20000000) // 20 Mbps for crystal clear gameplay
+            setInteger(MediaFormat.KEY_FRAME_RATE, 60)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+
+            // --- THE NDK HARDCORE FLAGS ---
+            // Forces Android to treat this encoder with Real-Time iOS-level priority
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                setInteger(MediaFormat.KEY_PRIORITY, 0) 
+            }
+            // Stops the encoder from buffering frames, destroying touchscreen lag
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                setInteger(MediaFormat.KEY_LOW_LATENCY, 1) 
+            }
+            // Forces the GPU/CPU to process this at max clock speed
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                setFloat(MediaFormat.KEY_OPERATING_RATE, 120f) 
+            }
         }
 
-        codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
+        codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        inputSurface = codec.createInputSurface()
+        
+        // This generates the EXACT same zero-copy hardware surface as our C++ code!
+        inputSurface = codec.createInputSurface() 
         codec.start()
     }
 
     fun release() {
         try {
-            codec.signalEndOfInputStream()
             codec.stop()
             codec.release()
-            inputSurface?.release()
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

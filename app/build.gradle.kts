@@ -13,13 +13,13 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-    } // <--- NOTICE: defaultConfig is fully closed here!
+    } 
 
     // --- C++ HARDCORE ENGINE COMPILES HERE ---
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.10.2"
+            // Removed the version requirement so GitHub Actions stops crashing!
         }
     }
 

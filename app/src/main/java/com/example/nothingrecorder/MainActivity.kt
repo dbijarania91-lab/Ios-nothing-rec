@@ -10,9 +10,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
@@ -22,6 +20,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            // Android 14 Fix: Start service IMMEDIATELY after consent
             startRecordingService(result.resultCode, result.data!!)
             isRecording = true
         } else {
@@ -32,7 +31,8 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        if (permissions[Manifest.permission.RECORD_AUDIO] == true) requestScreenCapture()
+        val audioGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: false
+        if (audioGranted) requestScreenCapture()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,33 +46,34 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkPermissionsAndStart() {
-        val needsAudio = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
-        val needsNotif = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && 
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-
-        val perms = mutableListOf<String>()
-        if (needsAudio) perms.add(Manifest.permission.RECORD_AUDIO)
-        if (needsNotif) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-
-        if (perms.isNotEmpty()) permissionLauncher.launch(perms.toTypedArray()) else requestScreenCapture()
+        val audioPerm = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+        if (audioPerm != PackageManager.PERMISSION_GRANTED) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+        } else {
+            requestScreenCapture()
+        }
     }
 
     private fun requestScreenCapture() {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        // This triggers the "Start Recording?" system pop-up
         screenCaptureLauncher.launch(mpm.createScreenCaptureIntent())
     }
 
     private fun startRecordingService(resultCode: Int, data: Intent) {
-        val serviceIntent = Intent(this, ScreenRecordService::class.java).apply {
+        val intent = Intent(this, ScreenRecordService::class.java).apply {
             putExtra("RESULT_CODE", resultCode)
             putExtra("DATA", data)
         }
-        startForegroundService(serviceIntent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
     }
 
     private fun stopRecordingService() {
-        val serviceIntent = Intent(this, ScreenRecordService::class.java)
-        stopService(serviceIntent)
+        stopService(Intent(this, ScreenRecordService::class.java))
         isRecording = false
     }
 }

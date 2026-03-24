@@ -9,11 +9,9 @@ import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.media.MediaScannerConnection // ADDED for Gallery Fix
 import android.os.Build
 import android.os.Environment
 import android.os.IBinder
-import android.util.Log // ADDED for Gallery Fix
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -87,8 +85,8 @@ class ScreenRecordService : Service() {
         videoEncoder = VideoEncoder().apply { prepare() }
         audioEncoder = AudioEncoder(mediaProjection!!).apply { prepare() }
         
-        // UPDATED: Use absolutePath from our variable
-        muxerPipeline = MuxerPipeline(videoEncoder, audioEncoder, outputFile!!.absolutePath)
+        // UPDATED: Passed "this" so MuxerPipeline has the Context for the Gallery fix
+        muxerPipeline = MuxerPipeline(this, videoEncoder, audioEncoder, outputFile!!.absolutePath)
 
         // Map the VirtualDisplay DIRECTLY to the VideoEncoder Surface (Zero Copy)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
@@ -103,6 +101,18 @@ class ScreenRecordService : Service() {
     override fun onDestroy() {
         // Cleanup resources
         mediaProjection?.unregisterCallback(projectionCallback)
+        audioEncoder.release()
+        videoEncoder.release()
+        virtualDisplay?.release()
+        mediaProjection?.stop()
+
+        // NOTE: The Gallery Fix was moved to MuxerPipeline.kt so the default Gallery can play it!
+
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent): IBinder? = null
+}
         audioEncoder.release()
         videoEncoder.release()
         virtualDisplay?.release()

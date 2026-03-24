@@ -18,7 +18,9 @@ import java.io.File
 class ScreenRecordService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
-    private lateinit var videoEncoder: VideoEncoder
+    
+    // CHANGED: Using our C++ NativeEncoder instead of VideoEncoder
+    private lateinit var nativeEncoder: NativeEncoder
     private lateinit var audioEncoder: AudioEncoder
     private lateinit var muxerPipeline: MuxerPipeline
     private var outputFile: File? = null 
@@ -65,26 +67,33 @@ class ScreenRecordService : Service() {
         val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
         outputFile = File(moviesDir, "NothingRecord_${System.currentTimeMillis()}.mp4")
 
-        videoEncoder = VideoEncoder().apply { prepare() }
+        // 1. Initialize the C++ Native Engine
+        nativeEncoder = NativeEncoder()
+        val hardcoreSurface = nativeEncoder.createHardwareSurface()
+
         audioEncoder = AudioEncoder(mediaProjection!!).apply { prepare() }
         
-        // Passing "this" context for the Gallery scanner
-        muxerPipeline = MuxerPipeline(this, videoEncoder, audioEncoder, outputFile!!.absolutePath)
+        // 2. We pass 'null' for the video encoder because C++ is handling the video now!
+        muxerPipeline = MuxerPipeline(this, null, audioEncoder, outputFile!!.absolutePath)
 
+        // 3. Plug the Screen DIRECTLY into the C++ GPU Window (Zero-Copy)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "ScreenRecorder", 1080, 2400, 462,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            videoEncoder.inputSurface, null, null
+            hardcoreSurface, 
+            null, null
         )
 
-        // Starting the pipeline. The custom Thread inside handles the heavy lifting.
         muxerPipeline.startLoop() 
     }
 
     override fun onDestroy() {
         mediaProjection?.unregisterCallback(projectionCallback)
         audioEncoder.release()
-        videoEncoder.release()
+        
+        // STOP the C++ encoder
+        nativeEncoder.stopHardwareEncoder()
+        
         virtualDisplay?.release()
         mediaProjection?.stop()
         super.onDestroy()

@@ -27,11 +27,15 @@ class ScreenRecordService : Service() {
     private lateinit var muxerPipeline: MuxerPipeline
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val resultCode = intent?.getIntExtra("RESULT_CODE", 0) ?: return START_NOT_STICKY
-        val data = intent.getParcelableExtra<Intent>("DATA") ?: return START_NOT_STICKY
+    // MANDATORY FOR ANDROID 14: Listen for system stop signals
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            stopSelf()
+        }
+    }
 
-        // 1. Create Channel FIRST
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // 1. Setup Notification Channel IMMEDIATELY
         val channelId = "nothing_rec_channel"
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -39,24 +43,30 @@ class ScreenRecordService : Service() {
             manager.createNotificationChannel(channel)
         }
 
-        // 2. Build Notification
+        // 2. Build the "Hardcore" Notification
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Nothing Recorder")
-            .setContentText("Recording in progress...")
+            .setContentText("Hardware recording active...")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .build()
 
-        // 3. Start Foreground with Type
+        // 3. Start Foreground (Security Requirement)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
             startForeground(1, notification)
         }
 
-        // 4. Start Projection
+        // 4. Retrieve MediaProjection Data
+        val resultCode = intent?.getIntExtra("RESULT_CODE", 0) ?: return START_NOT_STICKY
+        val data = intent.getParcelableExtra<Intent>("DATA") ?: return START_NOT_STICKY
+
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mpm.getMediaProjection(resultCode, data)
+
+        // 5. REGISTER CALLBACK (Fixes the crash you found!)
+        mediaProjection?.registerCallback(projectionCallback, null)
 
         setupPipeline()
         return START_NOT_STICKY
@@ -70,6 +80,7 @@ class ScreenRecordService : Service() {
         audioEncoder = AudioEncoder(mediaProjection!!).apply { prepare() }
         muxerPipeline = MuxerPipeline(videoEncoder, audioEncoder, outputFile.absolutePath)
 
+        // Map the VirtualDisplay DIRECTLY to the VideoEncoder Surface (Zero-Copy)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "ScreenRecorder", 1080, 2400, 402,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
@@ -80,6 +91,8 @@ class ScreenRecordService : Service() {
     }
 
     override fun onDestroy() {
+        // Cleanup resources
+        mediaProjection?.unregisterCallback(projectionCallback)
         audioEncoder.release()
         videoEncoder.release()
         virtualDisplay?.release()

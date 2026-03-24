@@ -18,14 +18,17 @@ class AudioEncoder(private val mediaProjection: MediaProjection) {
 
     @SuppressLint("MissingPermission")
     fun prepare() {
+        // High-Fidelity AAC Audio (320kbps)
         val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 2).apply {
-            setInteger(MediaFormat.KEY_BIT_RATE, 320000)
+            setInteger(MediaFormat.KEY_BIT_RATE, 320000) // 320kbps for crystal clear footsteps
             setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
         }
+
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         codec.start()
 
+        // Capture Internal Game Audio ONLY
         val config = AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
             .addMatchingUsage(AudioAttributes.USAGE_GAME)
@@ -37,8 +40,12 @@ class AudioEncoder(private val mediaProjection: MediaProjection) {
             .setChannelMask(AudioFormat.CHANNEL_IN_STEREO)
             .build()
 
+        // Double buffer size to prevent audio crackling during heavy gunfights
+        val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT) * 2
+
         audioRecord = AudioRecord.Builder()
             .setAudioFormat(audioFormat)
+            .setBufferSizeInBytes(minBufferSize)
             .setAudioPlaybackCaptureConfig(config)
             .build()
     }

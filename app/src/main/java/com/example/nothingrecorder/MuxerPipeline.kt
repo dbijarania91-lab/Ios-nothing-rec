@@ -9,7 +9,7 @@ import android.util.Log
 
 class MuxerPipeline(
     private val context: Context,
-    private val videoEncoder: VideoEncoder?, // <--- The '?' makes it safe for our C++ switch
+    private val videoEncoder: VideoEncoder, // Back to normal!
     private val audioEncoder: AudioEncoder,
     private val outputPath: String
 ) {
@@ -20,7 +20,7 @@ class MuxerPipeline(
 
     fun startLoop() {
         Thread {
-            // HARDCORE OPTIMIZATION: Forces the CPU to prioritize this over everything else
+            // THE MAGIC: This raw OS thread stops the 41 FPS drop!
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
 
             muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
@@ -30,17 +30,15 @@ class MuxerPipeline(
             audioEncoder.isRecording = true
 
             while (audioEncoder.isRecording) {
-                // Feeds internal audio (Reels/YT) to the file
                 feedAudio(audioEncoder.codec, audioEncoder.audioRecord)
                 
-                // Only drain the Kotlin video encoder IF it exists (C++ is handling it now)
-                videoEncoder?.codec?.let { drainEncoder(it, bufferInfo, true) }
-                
+                // Muxer now pulls both Video and Audio perfectly
+                drainEncoder(videoEncoder.codec, bufferInfo, true)
                 drainEncoder(audioEncoder.codec, bufferInfo, false)
             }
             
             stopMuxer()
-        }.start() // Starts the thread instantly
+        }.start() 
     }
 
     private fun feedAudio(codec: MediaCodec, audioRecord: AudioRecord) {
@@ -91,7 +89,6 @@ class MuxerPipeline(
             videoTrackIndex = -1
             audioTrackIndex = -1
             
-            // Perfect Gallery Sync - triggers only when the file is fully closed
             MediaScannerConnection.scanFile(context, arrayOf(outputPath), arrayOf("video/mp4")) { path, uri ->
                 Log.d("NothingRecorder", "Perfect Sync! Ready for Gallery: $path")
             }

@@ -9,7 +9,7 @@ import android.util.Log
 
 class MuxerPipeline(
     private val context: Context,
-    private val videoEncoder: VideoEncoder,
+    private val videoEncoder: VideoEncoder?, // <--- The '?' makes it safe for our C++ switch
     private val audioEncoder: AudioEncoder,
     private val outputPath: String
 ) {
@@ -18,7 +18,6 @@ class MuxerPipeline(
     private var audioTrackIndex = -1
     private var isMuxerStarted = false
 
-    // REMOVED 'suspend'. We are using a raw, high-priority OS Thread now.
     fun startLoop() {
         Thread {
             // HARDCORE OPTIMIZATION: Forces the CPU to prioritize this over everything else
@@ -34,7 +33,9 @@ class MuxerPipeline(
                 // Feeds internal audio (Reels/YT) to the file
                 feedAudio(audioEncoder.codec, audioEncoder.audioRecord)
                 
-                drainEncoder(videoEncoder.codec, bufferInfo, true)
+                // Only drain the Kotlin video encoder IF it exists (C++ is handling it now)
+                videoEncoder?.codec?.let { drainEncoder(it, bufferInfo, true) }
+                
                 drainEncoder(audioEncoder.codec, bufferInfo, false)
             }
             

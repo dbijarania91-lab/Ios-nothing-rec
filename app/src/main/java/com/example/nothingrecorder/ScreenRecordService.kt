@@ -9,9 +9,11 @@ import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.media.MediaScannerConnection // ADDED for Gallery Fix
 import android.os.Build
 import android.os.Environment
 import android.os.IBinder
+import android.util.Log // ADDED for Gallery Fix
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,10 @@ class ScreenRecordService : Service() {
     private lateinit var videoEncoder: VideoEncoder
     private lateinit var audioEncoder: AudioEncoder
     private lateinit var muxerPipeline: MuxerPipeline
+    
+    // ADDED: Class-level variable so onDestroy can find the file
+    private var outputFile: File? = null 
+    
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
 
     // MANDATORY FOR ANDROID 14: Listen for system stop signals
@@ -46,7 +52,7 @@ class ScreenRecordService : Service() {
         // 2. Build the "Hardcore" Notification
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Nothing Recorder")
-            .setContentText("Hardware recording active...")
+            .setContentText("Hardcore recording active...")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .build()
@@ -65,7 +71,7 @@ class ScreenRecordService : Service() {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mpm.getMediaProjection(resultCode, data)
 
-        // 5. REGISTER CALLBACK (Fixes the crash you found!)
+        // 5. REGISTER CALLBACK (Fixes the crash you found)
         mediaProjection?.registerCallback(projectionCallback, null)
 
         setupPipeline()
@@ -74,15 +80,19 @@ class ScreenRecordService : Service() {
 
     private fun setupPipeline() {
         val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-        val outputFile = File(moviesDir, "NothingRecord_${System.currentTimeMillis()}.mp4")
         
+        // UPDATED: Save to our new class-level variable
+        outputFile = File(moviesDir, "NothingRecord_${System.currentTimeMillis()}.mp4")
+
         videoEncoder = VideoEncoder().apply { prepare() }
         audioEncoder = AudioEncoder(mediaProjection!!).apply { prepare() }
-        muxerPipeline = MuxerPipeline(videoEncoder, audioEncoder, outputFile.absolutePath)
+        
+        // UPDATED: Use absolutePath from our variable
+        muxerPipeline = MuxerPipeline(videoEncoder, audioEncoder, outputFile!!.absolutePath)
 
-        // Map the VirtualDisplay DIRECTLY to the VideoEncoder Surface (Zero-Copy)
+        // Map the VirtualDisplay DIRECTLY to the VideoEncoder Surface (Zero Copy)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenRecorder", 1080, 2400, 402,
+            "ScreenRecorder", 1080, 2400, 462,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             videoEncoder.inputSurface, null, null
         )
@@ -97,8 +107,21 @@ class ScreenRecordService : Service() {
         videoEncoder.release()
         virtualDisplay?.release()
         mediaProjection?.stop()
+
+        // --- THE GALLERY FIX IS HERE ---
+        // This forces Android to instantly index the file we just closed
+        outputFile?.let { file ->
+            MediaScannerConnection.scanFile(
+                this, 
+                arrayOf(file.absolutePath), 
+                arrayOf("video/mp4")
+            ) { path, uri ->
+                Log.d("NothingRecorder", "Gallery Sync Success! Saved to: $path")
+            }
+        }
+
         super.onDestroy()
     }
-    
-    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onBind(intent: Intent): IBinder? = null
 }

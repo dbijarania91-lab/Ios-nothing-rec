@@ -69,7 +69,7 @@ class ScreenRecordService : Service() {
         muxerPipeline = MuxerPipeline(this, videoEncoder, audioEncoder, outputFile!!.absolutePath)
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenRecorder", 1080, 2400, 462,
+            "ScreenRecorder", 2400, 1080, 462,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             videoEncoder.inputSurface, 
             null, null

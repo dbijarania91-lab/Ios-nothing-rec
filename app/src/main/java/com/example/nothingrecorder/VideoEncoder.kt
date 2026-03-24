@@ -11,7 +11,7 @@ class VideoEncoder {
     lateinit var inputSurface: Surface
 
     fun prepare() {
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1080, 2400).apply {
+        val format = MediaFormat.createVideoFormat(MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 2400, 1080).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, 20000000) 
             

@@ -17,12 +17,20 @@ class VideoEncoder {
             setInteger(MediaFormat.KEY_FRAME_RATE, 60)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
 
-            // --- THE LOCKED 60 FPS FIX (CFR) ---
-            // 1,000,000 microseconds / 60 frames = 16666. 
-            // This forces Android to write a frame every 16.6ms no matter what, exactly like iOS.
+            // 1. Tell VirtualDisplay to capture exactly 60
+            setInteger(MediaFormat.KEY_CAPTURE_RATE, 60)
+
+            // 2. High Profile (Like iOS) stops the encoder from dropping frames under heavy load
+            setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
+            setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel42)
+
+            // 3. The CFR duplicate lock
             setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1000000L / 60)
 
-            // Hardcore NDK Flags
+            // Hardcore NDK System Flags
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, 60f)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 setInteger(MediaFormat.KEY_PRIORITY, 0) 
             }
@@ -36,7 +44,15 @@ class VideoEncoder {
 
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        
         inputSurface = codec.createInputSurface() 
+
+        // --- THE MAGIC BULLET FOR 60 FPS ---
+        // This overrides your Nothing Phone's Variable Refresh Rate completely.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            inputSurface.setFrameRate(60f, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE)
+        }
+
         codec.start()
     }
 

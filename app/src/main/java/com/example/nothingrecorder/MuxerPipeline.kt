@@ -75,7 +75,11 @@ class MuxerPipeline(
         if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
             synchronized(muxerLock) {
                 val newFormat = codec.outputFormat
-                if (isVideo) videoTrackIndex = muxer!!.addTrack(newFormat) else audioTrackIndex = muxer!!.addTrack(newFormat)
+                if (isVideo) {
+                    videoTrackIndex = muxer!!.addTrack(newFormat)
+                } else {
+                    audioTrackIndex = muxer!!.addTrack(newFormat)
+                }
                 
                 if (videoTrackIndex >= 0 && audioTrackIndex >= 0 && !isMuxerStarted) {
                     muxer!!.start()
@@ -120,27 +124,6 @@ class MuxerPipeline(
                 
                 // Reset for the next clip
                 startTimestampUs = -1L 
-                
-                MediaScannerConnection.scanFile(context, arrayOf(outputPath), arrayOf("video/mp4")) { path, _ ->
-                    Log.d("NothingRecorder", "Perfect Sync! Ready for Gallery: $path")
-                }
-            }
-        }
-    }
-}
-            try {
-                if (isMuxerStarted) muxer?.stop()
-            } catch (e: Exception) { e.printStackTrace() } 
-            finally {
-                muxer?.release()
-                muxer = null
-                isMuxerStarted = false
-                videoTrackIndex = -1
-                audioTrackIndex = -1
-                
-                // Reset everything for the next clip
-                videoFrameCount = 0L 
-                audioStartTimeUs = -1L 
                 
                 MediaScannerConnection.scanFile(context, arrayOf(outputPath), arrayOf("video/mp4")) { path, _ ->
                     Log.d("NothingRecorder", "Perfect Sync! Ready for Gallery: $path")

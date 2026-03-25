@@ -19,9 +19,9 @@ class MuxerPipeline(
     @Volatile private var isMuxerStarted = false
     private val muxerLock = Object()
     
-    // --- THE IOS TIMESTAMP HACK ---
-    // This tracks exact frames to force perfect Constant Frame Rate
+    // --- THE TIMESTAMPS ---
     private var videoFrameCount = 0L 
+    private var audioStartTimeUs = -1L // The new zero-anchor for perfect A/V sync
 
     fun startLoop() {
         muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
@@ -31,7 +31,7 @@ class MuxerPipeline(
         audioEncoder.audioRecord.startRecording()
         audioEncoder.isRecording = true
 
-        // --- THREAD 1: PURE VIDEO ---
+        // Thread 1: Pure Video
         Thread {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
             while (audioEncoder.isRecording) {
@@ -39,7 +39,7 @@ class MuxerPipeline(
             }
         }.start()
 
-        // --- THREAD 2: PURE AUDIO ---
+        // Thread 2: Pure Audio
         Thread {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
             while (audioEncoder.isRecording) {
@@ -56,7 +56,15 @@ class MuxerPipeline(
             val inputBuffer = codec.getInputBuffer(inputBufferIndex) ?: return
             val readResult = audioRecord.read(inputBuffer, inputBuffer.capacity())
             if (readResult > 0) {
-                val ptsUsec = System.nanoTime() / 1000
+                
+                // --- THE A/V SYNC ZERO ANCHOR ---
+                val currentUs = System.nanoTime() / 1000
+                if (audioStartTimeUs == -1L) {
+                    audioStartTimeUs = currentUs // Lock in the start time
+                }
+                // Subtract the start time so audio starts at exactly 0, matching the video!
+                val ptsUsec = currentUs - audioStartTimeUs 
+
                 codec.queueInputBuffer(inputBufferIndex, 0, readResult, ptsUsec, 0)
             }
         }
@@ -81,9 +89,7 @@ class MuxerPipeline(
             synchronized(muxerLock) {
                 if (isMuxerStarted && (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0)) {
                     
-                    // --- THE MAGIC TIMESTAMP REWRITE ---
                     if (isVideo) {
-                        // Forces mathematically perfect 16.66ms gaps between every single frame
                         bufferInfo.presentationTimeUs = videoFrameCount * (1000000L / 60L)
                         videoFrameCount++
                     }
@@ -106,8 +112,10 @@ class MuxerPipeline(
                 isMuxerStarted = false
                 videoTrackIndex = -1
                 audioTrackIndex = -1
-                // Reset frame count for the next recording
+                
+                // Reset everything for the next clip
                 videoFrameCount = 0L 
+                audioStartTimeUs = -1L 
                 
                 MediaScannerConnection.scanFile(context, arrayOf(outputPath), arrayOf("video/mp4")) { path, _ ->
                     Log.d("NothingRecorder", "Perfect Sync! Ready for Gallery: $path")

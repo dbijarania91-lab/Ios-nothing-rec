@@ -19,9 +19,9 @@ class MuxerPipeline(
     @Volatile private var isMuxerStarted = false
     private val muxerLock = Object()
     
-    // --- THE TIMESTAMPS ---
-    private var videoFrameCount = 0L 
-    private var audioStartTimeUs = -1L // The new zero-anchor for perfect A/V sync
+    // --- THE UNIVERSAL ZERO-ANCHOR ---
+    // Locks Audio and Video to the same physical hardware clock so time flows normally
+    @Volatile private var startTimestampUs = -1L
 
     fun startLoop() {
         muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
@@ -56,15 +56,14 @@ class MuxerPipeline(
             val inputBuffer = codec.getInputBuffer(inputBufferIndex) ?: return
             val readResult = audioRecord.read(inputBuffer, inputBuffer.capacity())
             if (readResult > 0) {
-                
-                // --- THE A/V SYNC ZERO ANCHOR ---
                 val currentUs = System.nanoTime() / 1000
-                if (audioStartTimeUs == -1L) {
-                    audioStartTimeUs = currentUs // Lock in the start time
+                
+                // Lock the universal start time if audio gets here first
+                if (startTimestampUs == -1L) {
+                    startTimestampUs = currentUs
                 }
-                // Subtract the start time so audio starts at exactly 0, matching the video!
-                val ptsUsec = currentUs - audioStartTimeUs 
-
+                
+                val ptsUsec = currentUs - startTimestampUs 
                 codec.queueInputBuffer(inputBufferIndex, 0, readResult, ptsUsec, 0)
             }
         }
@@ -90,8 +89,14 @@ class MuxerPipeline(
                 if (isMuxerStarted && (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0)) {
                     
                     if (isVideo) {
-                        bufferInfo.presentationTimeUs = videoFrameCount * (1000000L / 60L)
-                        videoFrameCount++
+                        // Lock the universal start time if video gets here first
+                        if (startTimestampUs == -1L) {
+                            startTimestampUs = bufferInfo.presentationTimeUs
+                        }
+                        
+                        // Sync video to the exact real-world clock
+                        bufferInfo.presentationTimeUs -= startTimestampUs
+                        if (bufferInfo.presentationTimeUs < 0) bufferInfo.presentationTimeUs = 0
                     }
 
                     muxer!!.writeSampleData(if (isVideo) videoTrackIndex else audioTrackIndex, encodedData, bufferInfo)
@@ -103,6 +108,26 @@ class MuxerPipeline(
 
     private fun stopMuxer() {
         synchronized(muxerLock) {
+            try {
+                if (isMuxerStarted) muxer?.stop()
+            } catch (e: Exception) { e.printStackTrace() } 
+            finally {
+                muxer?.release()
+                muxer = null
+                isMuxerStarted = false
+                videoTrackIndex = -1
+                audioTrackIndex = -1
+                
+                // Reset for the next clip
+                startTimestampUs = -1L 
+                
+                MediaScannerConnection.scanFile(context, arrayOf(outputPath), arrayOf("video/mp4")) { path, _ ->
+                    Log.d("NothingRecorder", "Perfect Sync! Ready for Gallery: $path")
+                }
+            }
+        }
+    }
+}
             try {
                 if (isMuxerStarted) muxer?.stop()
             } catch (e: Exception) { e.printStackTrace() } 

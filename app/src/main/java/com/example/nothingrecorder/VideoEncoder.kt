@@ -13,31 +13,29 @@ class VideoEncoder {
     fun prepare() {
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, 2400, 1080).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            
+            // --- THE APPLE WEIGHT CLASS ---
             setInteger(MediaFormat.KEY_BIT_RATE, 40000000) 
             setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
             setInteger(MediaFormat.KEY_FRAME_RATE, 60)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-
-            // --- THE B-FRAME UPGRADE ---
-            // Unlocks Bi-directional predictive frames for iOS-level fluid motion
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                setInteger(MediaFormat.KEY_MAX_B_FRAMES, 2)
-            }
 
             // The Scanner
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 setInteger(MediaFormat.KEY_INTRA_REFRESH_PERIOD, 60)
             }
 
-            // --- THE 10-BIT VISUAL UPGRADE ---
-            // Forces the HEVC chip to calculate motion and lighting in 10-bit precision
-            setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10)
+            // --- 8-BIT STABILITY FOR SNAPDRAGON 778G+ ---
+            setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain)
             setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.HEVCHighTierLevel51)
 
             // 120Hz Bypass
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, 120f) 
             }
+
+            // Frame-Drop Recovery (The Safety Net)
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1000000L / 60)
 
             // System Flags
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
